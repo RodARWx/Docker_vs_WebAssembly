@@ -1,0 +1,12 @@
+{
+  "name": "poc-wasm",
+  "version": "1.0.0",
+  "description": "Minimalist WebAssembly Proof of Concept using AssemblyScript for Docker vs. WebAssembly academic comparison",
+  "private": true,
+  "scripts": {
+    "build": "asc assembly/index.ts --outFile build/hello.wasm --textFile build/hello.wat --runtime stub -O"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.32"
+  }
+}

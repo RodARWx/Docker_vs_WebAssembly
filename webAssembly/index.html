@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebAssembly POC — Docker vs. WebAssembly</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      max-width: 720px;
+      margin: 2.5rem auto;
+      padding: 0 1.25rem;
+      line-height: 1.6;
+    }
+    h1 {
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      color: #666;
+      margin-top: 0;
+    }
+    .card {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-top: 1.25rem;
+    }
+    .message {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0.5rem 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.25rem;
+      border-bottom: 1px solid #ddd;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      background: rgba(127, 127, 127, 0.15);
+    }
+    .error {
+      color: #c62828;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebAssembly (Wasm) Proof of Concept</h1>
+  <p class="subtitle">Minimalist AssemblyScript module for comparing Docker vs. WebAssembly</p>
+
+  <div class="card">
+    <h2>Linear Memory Output</h2>
+    <p id="wasm-message" class="message">Loading WebAssembly module...</p>
+  </div>
+
+  <div class="card">
+    <h2>JS &harr; Wasm Interoperability (Stack-Based VM)</h2>
+    <p>Calling exported function <code>add(20, 22)</code>: <strong id="add-result">...</strong></p>
+  </div>
+
+  <div class="card">
+    <h2>Performance &amp; Footprint Metrics</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Binary File</th>
+          <td><code>build/hello.wasm</code></td>
+        </tr>
+        <tr>
+          <th>Binary Size</th>
+          <td id="binary-size">...</td>
+        </tr>
+        <tr>
+          <th>Fetch + Compile + Instantiate Time</th>
+          <td id="load-time">...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script type="module">
+    const WASM_URL = "./build/hello.wasm";
+
+    async function runWasm() {
+      const messageEl = document.getElementById("wasm-message");
+      const addResultEl = document.getElementById("add-result");
+      const binarySizeEl = document.getElementById("binary-size");
+      const loadTimeEl = document.getElementById("load-time");
+
+      try {
+        // Measure download + streaming compilation + instantiation
+        const startTime = performance.now();
+        const response = await fetch(WASM_URL);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} while fetching ${WASM_URL}`);
+        }
+
+        // Clone before streaming so we can fall back to ArrayBuffer.byteLength if Content-Length is absent
+        const responseClone = response.clone();
+        const { instance } = await WebAssembly.instantiateStreaming(response);
+        const elapsedMs = performance.now() - startTime;
+
+        // Read exact binary size from Content-Length header or ArrayBuffer.byteLength
+        const contentLengthHeader = response.headers.get("content-length");
+        const sizeBytes = contentLengthHeader
+          ? Number.parseInt(contentLengthHeader, 10)
+          : (await responseClone.arrayBuffer()).byteLength;
+        const sizeKB = (sizeBytes / 1024).toFixed(2);
+
+        // Extract exported functions and linear memory
+        const { memory, getMessagePtr, getMessageByteLength, add } = instance.exports;
+
+        // Read "Hello World from WebAssembly!" from Wasm linear memory (UTF-16LE)
+        const ptr = getMessagePtr();
+        const byteLength = getMessageByteLength();
+        const memoryView = new Uint8Array(memory.buffer, ptr, byteLength);
+        const message = new TextDecoder("utf-16le").decode(memoryView);
+
+        // Invoke numeric exported function
+        const sum = add(20, 22);
+
+        // Render results
+        messageEl.textContent = message;
+        addResultEl.textContent = String(sum);
+        binarySizeEl.textContent = `${sizeBytes} bytes (${sizeKB} KB)`;
+        loadTimeEl.textContent = `${elapsedMs.toFixed(3)} ms`;
+      } catch (err) {
+        messageEl.textContent = `Failed to load WebAssembly module: ${err.message}`;
+        messageEl.classList.add("error");
+        console.error(err);
+      }
+    }
+
+    runWasm();
+  </script>
+</body>
+</html>
